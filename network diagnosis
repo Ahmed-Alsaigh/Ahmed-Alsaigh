@@ -1,0 +1,77 @@
+# network diagnosis
+import os
+import re
+import subprocess
+from statistics import mean
+import socket
+import ipaddress
+import struct
+import time
+import argparse
+import scapy.all as scapy
+
+def ping(host):
+    # Perform ping using subprocess
+    command = ["ping", "-c", "3", host]
+    process = subprocess.run(command, capture_output=True, text=True)
+    print(process.stdout)
+
+def traceroute(host, port):
+    # Perform traceroute using TCP packets on a user-specified port
+    max_hops = 30
+    timeout = 2
+
+    # Resolve the host name to an IP address using getaddrinfo
+    addrinfo = socket.getaddrinfo(host, port)[0]
+    dest_addr = addrinfo[4][0]
+
+    # Iterate over the TTL values from 1 to max_hops using a for loop
+    for ttl in range(1, max_hops + 1):
+        # Create a TCP packet with the SYN flag and the user-specified port
+        packet = scapy.IP(dst=dest_addr, ttl=ttl) / scapy.TCP(dport=port, flags="S")
+
+        # Send the packet and receive the response or timeout
+        reply = scapy.sr1(packet, verbose=0, timeout=timeout)
+
+        # Check if any response was received
+        if reply is None:
+            curr_host = "*"
+            rtt = timeout * 1000
+
+        else:
+            # Get the source IP address and the round-trip time from the reply
+            curr_addr = reply.src
+            rtt = reply.time - packet.sent_time
+
+            # Get the host name from the IP address using a list comprehension
+            curr_name = [name for name in socket.gethostbyaddr(curr_addr) if name != curr_addr][0]
+
+            curr_host = f"{curr_name} ({curr_addr})"
+
+        # Print the traceroute results using f-strings
+        print(f"{ttl}\t{curr_host}\t{rtt:.2f} ms")
+
+        if curr_addr == dest_addr:
+            break
+
+
+# Parse the command-line arguments using argparse
+parser = argparse.ArgumentParser(description="A Python program that can perform ping and traceroute using TCP packets.")
+parser.add_argument("host", help="the IP address or domain name of the destination host")
+parser.add_argument("-p", "--port", type=int, default=80, help="the port number to use for TCP packets (default: 80)")
+args = parser.parse_args()
+
+# Validate the host argument as an IP address or a domain name
+try:
+    ip = ipaddress.ip_address(args.host)
+except ValueError:
+    try:
+        ip = socket.gethostbyname(args.host)
+    except socket.error:
+        print("Invalid IP address or domain name")
+        exit()
+
+# Perform ping and traceroute on the host using the port number
+ping(args.host)
+traceroute(args.host, args.port)
+
