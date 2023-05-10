@@ -1,0 +1,57 @@
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class NetworkDiagnosis {
+
+public static void main(String[] args) throws IOException {
+    // Get the IP address of the machine
+    URL url = new URL("http://ifconfig.me/ip");
+    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    String ipAddress = connection.getResponseMessage();
+
+    // Check the IP address
+    if (ipAddress == null) {
+        System.out.println("Error getting IP address");
+        return;
+    }
+
+    // Check the internet connection
+    boolean internetConnection = checkConnection("https://www.google.com");
+    if (!internetConnection) {
+        System.out.println("No internet connection");
+        return;
+    }
+
+    // Check the DNS
+    boolean dnsResolution = checkConnection("www.google.com");
+    if (!dnsResolution) {
+        System.out.println("DNS resolution failed");
+        return;
+    }
+
+    // Check the network latency
+    boolean networkLatency = checkConnectionWithTimeout("www.google.com", 1000);
+    if (!networkLatency) {
+        System.out.println("Network latency is too high");
+        return;
+    }
+
+    System.out.println("Network is up and running");
+}
+
+// Helper method to check connection to a URL
+private static boolean checkConnection(String urlString) throws IOException {
+    HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
+    int responseCode = connection.getResponseCode();
+    return responseCode == 200;
+}
+
+// Helper method to check connection to a URL with a timeout
+private static boolean checkConnectionWithTimeout(String urlString, int timeout) throws IOException {
+    HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
+    connection.setConnectTimeout(timeout);
+    int responseCode = connection.getResponseCode();
+    return responseCode == 200;
+}
+}
