@@ -1,57 +1,100 @@
 import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.UnknownHostException;
+import java.util.Scanner;
+import java.security.Security;
 
 public class NetworkDiagnosis {
 
-public static void main(String[] args) throws IOException {
-    // Get the IP address of the machine
-    URL url = new URL("http://ifconfig.me/ip");
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    String ipAddress = connection.getResponseMessage();
+    public static void main(String[] args) throws IOException {
 
-    // Check the IP address
-    if (ipAddress == null) {
-        System.out.println("Error getting IP address");
-        return;
+        // Modify the code
+        try (Scanner scanner = new Scanner(System.in)) {
+            // Get the IP address of the machine
+            try {
+                InetAddress localhost = InetAddress.getLocalHost();
+                System.out.println("IP address: " + localhost.getHostAddress());
+            } catch (UnknownHostException e) {
+                System.out.println("Error getting IP address");
+            }
+
+            // Check the internet connection
+            boolean internetConnection = InetAddress.getByName("www.google.com").isReachable(1000); // use the one-parameter method
+            if (!internetConnection) {
+                System.out.println("No internet connection");
+                return;
+            }
+
+            // Check the DNS
+            boolean dnsResolution = InetAddress.getByName("www.google.com").getAddress().equals(InetAddress.getByName(InetAddress.getByName("www.google.com").getHostName()).getAddress());
+            if (!dnsResolution) {
+                System.out.println("DNS resolution failed");
+                return;
+            }
+
+            // Check the network latency
+            long startTime = System.currentTimeMillis();
+            InetAddress.getByName("www.google.com").getAddress();
+            long endTime = System.currentTimeMillis();
+            int networkLatency = (int) (endTime - startTime);
+            if (networkLatency > 1000) {
+                System.out.println("Network latency is too high");
+                return;
+            }
+
+            // Add a traceroute
+            System.out.print("Enter the destination: ");
+            String destination = scanner.nextLine();
+
+            Process process = null;
+            try {
+                // Detect the operating system and use the appropriate command
+                String osName = System.getProperty("os.name").toLowerCase();
+                String[] command = null; // declare an array of strings for the command and its arguments
+                if (osName.contains("windows")) {
+                    command = new String[]{"tracert", destination}; // assign the array with the command and the destination as arguments
+                } else if (osName.contains("linux") || osName.contains("mac")) {
+                    command = new String[]{"traceroute", destination}; // assign the array with the command and the destination as arguments
+                } else {
+                    System.out.println("Unsupported operating system");
+                    return;
+                }
+                
+                process = Runtime.getRuntime().exec(command); // use the exec(String[]) method to execute the command
+                Scanner scanner2 = new Scanner(process.getInputStream());
+                System.out.println("Traceroute:");
+                
+                // Use regular expressions to match the output lines
+                String routerRegex = "^\\s*1\\s+.*?(\\d+\\.\\d+\\.\\d+\\.\\d+).*"; // match the first hop with an IP address
+                String companyRegex = "^\\s*.*?google\\.com.*?(\\d+\\.\\d+\\.\\d+\\.\\d+).*"; // match any hop with google.com and an IP address
+                String sourceRegex = "^\\s*.*?" + destination + ".*?(\\d+\\.\\d+\\.\\d+\\.\\d+).*"; // match any hop with the destination and an IP address
+                
+                while (scanner2.hasNext()) {
+                    String line = scanner2.nextLine();
+                    if (line.matches(routerRegex)) { // if it matches the router regex, append "Router: " followed by the IP address
+                        System.out.println("Router: " + line.replaceAll(routerRegex, "$1"));
+                    } else if (line.matches(companyRegex)) { // if it matches the company regex, append "Company: " followed by the IP address
+                        System.out.println("Company: " + line.replaceAll(companyRegex, "$1"));
+                    } else if (line.matches(sourceRegex)) { // if it matches the source regex, append "Source: " followed by the IP address and break out of the loop
+                        System.out.println("Source: " + line.replaceAll(sourceRegex, "$1"));
+                        break;
+                    }
+                }
+                
+                System.out.println("Network is up and running");
+                
+            } catch (IOException e) {
+                System.out.println("Error while performing traceroute command");
+            } finally {
+                if (process != null) {
+                    process.destroy(); // close the process manually
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error while scanning input");
+        }
+
+
     }
-
-    // Check the internet connection
-    boolean internetConnection = checkConnection("https://www.google.com");
-    if (!internetConnection) {
-        System.out.println("No internet connection");
-        return;
-    }
-
-    // Check the DNS
-    boolean dnsResolution = checkConnection("www.google.com");
-    if (!dnsResolution) {
-        System.out.println("DNS resolution failed");
-        return;
-    }
-
-    // Check the network latency
-    boolean networkLatency = checkConnectionWithTimeout("www.google.com", 1000);
-    if (!networkLatency) {
-        System.out.println("Network latency is too high");
-        return;
-    }
-
-    System.out.println("Network is up and running");
-}
-
-// Helper method to check connection to a URL
-private static boolean checkConnection(String urlString) throws IOException {
-    HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
-    int responseCode = connection.getResponseCode();
-    return responseCode == 200;
-}
-
-// Helper method to check connection to a URL with a timeout
-private static boolean checkConnectionWithTimeout(String urlString, int timeout) throws IOException {
-    HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
-    connection.setConnectTimeout(timeout);
-    int responseCode = connection.getResponseCode();
-    return responseCode == 200;
-}
 }
