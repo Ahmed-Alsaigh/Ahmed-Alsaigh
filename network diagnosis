@@ -1,77 +1,42 @@
-# network diagnosis
-import os
-import re
 import subprocess
-from statistics import mean
-import socket
-import ipaddress
-import struct
+import re
 import time
-import argparse
-import scapy.all as scapy
 
-def ping(host):
-    # Perform ping using subprocess
-    command = ["ping", "-c", "3", host]
-    process = subprocess.run(command, capture_output=True, text=True)
-    print(process.stdout)
+def get_ping(server_address):
+    """Returns the ping to the server."""
+    command = ["ping", server_address]
+    ping_result = subprocess.run(command, capture_output=True)
+    ping_time = re.search(r"(\d+)ms", ping_result.stdout.decode("utf-8")).group(1)
+    return int(ping_time)
 
-def traceroute(host, port):
-    # Perform traceroute using TCP packets on a user-specified port
-    max_hops = 30
-    timeout = 2
+def main():
+    """Prints the average ping to the server."""
+    server_address = input("Enter the server address: ")
+    pings = []
+    for i in range(4):
+        start = time.time()
+        pings.append(get_ping(server_address))
+        end = time.time()
+        print("Pinging {}... {}ms".format(server_address, end-start))
+    average_ping = sum(pings) / len(pings)
+    print("Average ping is", average_ping)
 
-    # Resolve the host name to an IP address using getaddrinfo
-    addrinfo = socket.getaddrinfo(host, port)[0]
-    dest_addr = addrinfo[4][0]
+    # Make a traceroute for the server address
+    traceroute_result = subprocess.run(["traceroute", "-m", "10", "-s", "1024", "-i", "1", server_address], capture_output=True)
+    traceroute_output = traceroute_result.stdout.decode("utf-8")
 
-    # Iterate over the TTL values from 1 to max_hops using a for loop
-    for ttl in range(1, max_hops + 1):
-        # Create a TCP packet with the SYN flag and the user-specified port
-        packet = scapy.IP(dst=dest_addr, ttl=ttl) / scapy.TCP(dport=port, flags="S")
+    # Get the ping of the first hop
+    local_router_ping = get_ping(traceroute_output.splitlines()[1].split("(")[1].split(")")[0])
 
-        # Send the packet and receive the response or timeout
-        reply = scapy.sr1(packet, verbose=0, timeout=timeout)
+    # Get the ping of the fifth hop
+    ISP_ping = get_ping(traceroute_output.splitlines()[5].split("(")[1].split(")")[0])
 
-        # Check if any response was received
-        if reply is None:
-            curr_host = "*"
-            rtt = timeout * 1000
+    # Get the ping of the last hop
+    source_ping = get_ping(traceroute_output.splitlines()[-1].split("(")[1].split(")")[0])
 
-        else:
-            # Get the source IP address and the round-trip time from the reply
-            curr_addr = reply.src
-            rtt = reply.time - packet.sent_time
+    print("Ping of the first hop (Local Router):", local_router_ping)
+    print("Ping of the fifth hop (ISP):", ISP_ping)
+    print("Ping of the last hop (Source):", source_ping)
 
-            # Get the host name from the IP address using a list comprehension
-            curr_name = [name for name in socket.gethostbyaddr(curr_addr) if name != curr_addr][0]
-
-            curr_host = f"{curr_name} ({curr_addr})"
-
-        # Print the traceroute results using f-strings
-        print(f"{ttl}\t{curr_host}\t{rtt:.2f} ms")
-
-        if curr_addr == dest_addr:
-            break
-
-
-# Parse the command-line arguments using argparse
-parser = argparse.ArgumentParser(description="A Python program that can perform ping and traceroute using TCP packets.")
-parser.add_argument("host", help="the IP address or domain name of the destination host")
-parser.add_argument("-p", "--port", type=int, default=80, help="the port number to use for TCP packets (default: 80)")
-args = parser.parse_args()
-
-# Validate the host argument as an IP address or a domain name
-try:
-    ip = ipaddress.ip_address(args.host)
-except ValueError:
-    try:
-        ip = socket.gethostbyname(args.host)
-    except socket.error:
-        print("Invalid IP address or domain name")
-        exit()
-
-# Perform ping and traceroute on the host using the port number
-ping(args.host)
-traceroute(args.host, args.port)
-
+if __name__ == "__main__":
+    main()
